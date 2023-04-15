@@ -78,9 +78,7 @@ BEGIN {
     }
 }
 
-use Cwd;
 use Digest::MD5 qw(md5);
-use MIME::Base64;
 use List::Util 'sum';
 
 use pathhelp qw(
@@ -99,12 +97,7 @@ use valgrind;  # valgrind report parser
 use globalconfig;
 use runner;
 
-my $CLIENTIP="127.0.0.1"; # address which curl uses for incoming connections
-my $CLIENT6IP="[::1]";    # address which curl uses for incoming connections
-
 my %custom_skip_reasons;
-
-my $CURLVERSION="";          # curl's reported version number
 
 my $ACURL=$VCURL;  # what curl binary to use to talk to APIs (relevant for CI)
                    # ACURL is handy to set to the system one for reliability
@@ -124,9 +117,6 @@ my $TESTCASES="all";
 my $libtool;
 my $repeat = 0;
 
-my $pwd = getcwd();          # current working directory
-my $posix_pwd = $pwd;
-
 my $start;          # time at which testing started
 
 my $uname_release = `uname -r`;
@@ -135,9 +125,6 @@ my $is_wsl = $uname_release =~ /Microsoft$/;
 my $http_ipv6;      # set if HTTP server has IPv6 support
 my $http_unix;      # set if HTTP server has Unix sockets support
 my $ftp_ipv6;       # set if FTP server has IPv6 support
-
-# this version is decided by the particular nghttp2 library that is being used
-my $h2cver = "h2c";
 
 my $resolver;       # name of the resolver backend (for human presentation)
 
@@ -774,127 +761,6 @@ sub displayserverfeatures {
     logmsg "***************************************** \n";
 }
 
-#######################################################################
-# substitute the variable stuff into either a joined up file or
-# a command, in either case passed by reference
-#
-sub subVariables {
-    my ($thing, $testnum, $prefix) = @_;
-    my $port;
-
-    if(!$prefix) {
-        $prefix = "%";
-    }
-
-    # test server ports
-    # Substitutes variables like %HTTPPORT and %SMTP6PORT with the server ports
-    foreach my $proto ('DICT',
-                       'FTP', 'FTP6', 'FTPS',
-                       'GOPHER', 'GOPHER6', 'GOPHERS',
-                       'HTTP', 'HTTP6', 'HTTPS',
-                       'HTTPSPROXY', 'HTTPTLS', 'HTTPTLS6',
-                       'HTTP2', 'HTTP2TLS',
-                       'HTTP3',
-                       'IMAP', 'IMAP6', 'IMAPS',
-                       'MQTT',
-                       'NOLISTEN',
-                       'POP3', 'POP36', 'POP3S',
-                       'RTSP', 'RTSP6',
-                       'SMB', 'SMBS',
-                       'SMTP', 'SMTP6', 'SMTPS',
-                       'SOCKS',
-                       'SSH',
-                       'TELNET',
-                       'TFTP', 'TFTP6') {
-        $port = protoport(lc $proto);
-        $$thing =~ s/${prefix}(?:$proto)PORT/$port/g;
-    }
-    # Special case: for PROXYPORT substitution, use httpproxy.
-    $port = protoport('httpproxy');
-    $$thing =~ s/${prefix}PROXYPORT/$port/g;
-
-    # server Unix domain socket paths
-    $$thing =~ s/${prefix}HTTPUNIXPATH/$HTTPUNIXPATH/g;
-    $$thing =~ s/${prefix}SOCKSUNIXPATH/$SOCKSUNIXPATH/g;
-
-    # client IP addresses
-    $$thing =~ s/${prefix}CLIENT6IP/$CLIENT6IP/g;
-    $$thing =~ s/${prefix}CLIENTIP/$CLIENTIP/g;
-
-    # server IP addresses
-    $$thing =~ s/${prefix}HOST6IP/$HOST6IP/g;
-    $$thing =~ s/${prefix}HOSTIP/$HOSTIP/g;
-
-    # misc
-    $$thing =~ s/${prefix}CURL/$CURL/g;
-    $$thing =~ s/${prefix}LOGDIR/$LOGDIR/g;
-    $$thing =~ s/${prefix}PWD/$pwd/g;
-    $$thing =~ s/${prefix}POSIX_PWD/$posix_pwd/g;
-    $$thing =~ s/${prefix}VERSION/$CURLVERSION/g;
-    $$thing =~ s/${prefix}TESTNUMBER/$testnum/g;
-
-    my $file_pwd = $pwd;
-    if($file_pwd !~ /^\//) {
-        $file_pwd = "/$file_pwd";
-    }
-    my $ssh_pwd = $posix_pwd;
-    # this only works after the SSH server has been started
-    # TODO: call sshversioninfo early and store $sshdid so this substitution
-    # always works
-    if ($sshdid && $sshdid =~ /OpenSSH-Windows/) {
-        $ssh_pwd = $file_pwd;
-    }
-
-    $$thing =~ s/${prefix}FILE_PWD/$file_pwd/g;
-    $$thing =~ s/${prefix}SSH_PWD/$ssh_pwd/g;
-    $$thing =~ s/${prefix}SRCDIR/$srcdir/g;
-    $$thing =~ s/${prefix}USER/$USER/g;
-
-    $$thing =~ s/${prefix}SSHSRVMD5/$SSHSRVMD5/g;
-    $$thing =~ s/${prefix}SSHSRVSHA256/$SSHSRVSHA256/g;
-
-    # The purpose of FTPTIME2 and FTPTIME3 is to provide times that can be
-    # used for time-out tests and that would work on most hosts as these
-    # adjust for the startup/check time for this particular host. We needed to
-    # do this to make the test suite run better on very slow hosts.
-    my $ftp2 = $ftpchecktime * 2;
-    my $ftp3 = $ftpchecktime * 3;
-
-    $$thing =~ s/${prefix}FTPTIME2/$ftp2/g;
-    $$thing =~ s/${prefix}FTPTIME3/$ftp3/g;
-
-    # HTTP2
-    $$thing =~ s/${prefix}H2CVER/$h2cver/g;
-}
-
-sub subBase64 {
-    my ($thing) = @_;
-
-    # cut out the base64 piece
-    if($$thing =~ s/%b64\[(.*)\]b64%/%%B64%%/i) {
-        my $d = $1;
-        # encode %NN characters
-        $d =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-        my $enc = encode_base64($d, "");
-        # put the result into there
-        $$thing =~ s/%%B64%%/$enc/;
-    }
-    # hex decode
-    if($$thing =~ s/%hex\[(.*)\]hex%/%%HEX%%/i) {
-        # decode %NN characters
-        my $d = $1;
-        $d =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-        $$thing =~ s/%%HEX%%/$d/;
-    }
-    if($$thing =~ s/%repeat\[(\d+) x (.*)\]%/%%REPEAT%%/i) {
-        # decode %NN characters
-        my ($d, $n) = ($2, $1);
-        $d =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-        my $all = $d x $n;
-        $$thing =~ s/%%REPEAT%%/$all/;
-    }
-}
-
 my $prevupdate;
 sub subNewlines {
     my ($force, $thing) = @_;
@@ -981,7 +847,7 @@ sub timestampskippedevents {
     }
 }
 
-#
+
 # 'prepro' processes the input array and replaces %-variables in the array
 # etc. Returns the processed version of the array
 
@@ -1025,8 +891,8 @@ sub prepro {
             elsif(($s =~ /^ *<\/data/) && $data_crlf) {
                 $data_crlf = 0;
             }
-            subVariables(\$s, $testnum, "%");
-            subBase64(\$s);
+            sub_variables(\$s, $testnum, "%");
+            sub_base64(\$s);
             subNewlines(0, \$s) if($data_crlf);
             push @out, $s;
         }
