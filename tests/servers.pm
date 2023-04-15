@@ -61,8 +61,7 @@ BEGIN {
             serverfortest
             stopserver
             stopservers
-            sub_variables
-            sub_base64
+            subvariables
         )
     );
 }
@@ -2955,7 +2954,7 @@ sub stopservers {
 # substitute the variable stuff into either a joined up file or
 # a command, in either case passed by reference
 #
-sub sub_variables {
+sub subvariables {
     my ($thing, $testnum, $prefix) = @_;
     my $port;
 
@@ -3042,34 +3041,6 @@ sub sub_variables {
 
     # HTTP2
     $$thing =~ s/${prefix}H2CVER/$h2cver/g;
-}
-
-sub sub_base64 {
-    my ($thing) = @_;
-
-    # cut out the base64 piece
-    if($$thing =~ s/%b64\[(.*)\]b64%/%%B64%%/i) {
-        my $d = $1;
-        # encode %NN characters
-        $d =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-        my $enc = encode_base64($d, "");
-        # put the result into there
-        $$thing =~ s/%%B64%%/$enc/;
-    }
-    # hex decode
-    if($$thing =~ s/%hex\[(.*)\]hex%/%%HEX%%/i) {
-        # decode %NN characters
-        my $d = $1;
-        $d =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-        $$thing =~ s/%%HEX%%/$d/;
-    }
-    if($$thing =~ s/%repeat\[(\d+) x (.*)\]%/%%REPEAT%%/i) {
-        # decode %NN characters
-        my ($d, $n) = ($2, $1);
-        $d =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-        my $all = $d x $n;
-        $$thing =~ s/%%REPEAT%%/$all/;
-    }
 }
 
 

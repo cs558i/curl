@@ -96,6 +96,7 @@ use servers;
 use valgrind;  # valgrind report parser
 use globalconfig;
 use runner;
+use testutil;
 
 my %custom_skip_reasons;
 
@@ -761,42 +762,6 @@ sub displayserverfeatures {
     logmsg "***************************************** \n";
 }
 
-my $prevupdate;
-sub subNewlines {
-    my ($force, $thing) = @_;
-
-    if($force) {
-        # enforce CRLF newline
-        $$thing =~ s/\x0d*\x0a/\x0d\x0a/;
-        return;
-    }
-
-    # When curl is built with Hyper, it gets all response headers delivered as
-    # name/value pairs and curl "invents" the newlines when it saves the
-    # headers. Therefore, curl will always save headers with CRLF newlines
-    # when built to use Hyper. By making sure we deliver all tests using CRLF
-    # as well, all test comparisons will survive without knowing about this
-    # little quirk.
-
-    if(($$thing =~ /^HTTP\/(1.1|1.0|2|3) [1-5][^\x0d]*\z/) ||
-       ($$thing =~ /^(GET|POST|PUT|DELETE) \S+ HTTP\/\d+(\.\d+)?/) ||
-       (($$thing =~ /^[a-z0-9_-]+: [^\x0d]*\z/i) &&
-        # skip curl error messages
-        ($$thing !~ /^curl: \(\d+\) /))) {
-        # enforce CRLF newline
-        $$thing =~ s/\x0d*\x0a/\x0d\x0a/;
-        $prevupdate = 1;
-    }
-    else {
-        if(($$thing =~ /^\n\z/) && $prevupdate) {
-            # if there's a blank link after a line we update, we hope it is
-            # the empty line following headers
-            $$thing =~ s/\x0a/\x0d\x0a/;
-        }
-        $prevupdate = 0;
-    }
-}
-
 #######################################################################
 # Provide time stamps for single test skipped events
 #
@@ -847,58 +812,6 @@ sub timestampskippedevents {
     }
 }
 
-
-# 'prepro' processes the input array and replaces %-variables in the array
-# etc. Returns the processed version of the array
-
-sub prepro {
-    my $testnum = shift;
-    my (@entiretest) = @_;
-    my $show = 1;
-    my @out;
-    my $data_crlf;
-    for my $s (@entiretest) {
-        my $f = $s;
-        if($s =~ /^ *%if (.*)/) {
-            my $cond = $1;
-            my $rev = 0;
-
-            if($cond =~ /^!(.*)/) {
-                $cond = $1;
-                $rev = 1;
-            }
-            $rev ^= $feature{$cond} ? 1 : 0;
-            $show = $rev;
-            next;
-        }
-        elsif($s =~ /^ *%else/) {
-            $show ^= 1;
-            next;
-        }
-        elsif($s =~ /^ *%endif/) {
-            $show = 1;
-            next;
-        }
-        if($show) {
-            # The processor does CRLF replacements in the <data*> sections if
-            # necessary since those parts might be read by separate servers.
-            if($s =~ /^ *<data(.*)\>/) {
-                if($1 =~ /crlf="yes"/ ||
-                   ($feature{"hyper"} && ($keywords{"HTTP"} || $keywords{"HTTPS"}))) {
-                    $data_crlf = 1;
-                }
-            }
-            elsif(($s =~ /^ *<\/data/) && $data_crlf) {
-                $data_crlf = 0;
-            }
-            sub_variables(\$s, $testnum, "%");
-            sub_base64(\$s);
-            subNewlines(0, \$s) if($data_crlf);
-            push @out, $s;
-        }
-    }
-    return @out;
-}
 
 # Setup CI Test Run
 sub citest_starttestrun {
@@ -1188,7 +1101,7 @@ sub singletest_check {
         if($hash{'crlf'} ||
            ($feature{"hyper"} && ($keywords{"HTTP"}
                            || $keywords{"HTTPS"}))) {
-            subNewlines(0, \$_) for @validstdout;
+            subnewlines(0, \$_) for @validstdout;
         }
 
         $res = compare($testnum, $testname, "stdout", \@actual, \@validstdout);
@@ -1289,7 +1202,7 @@ sub singletest_check {
         }
 
         if($hash{'crlf'}) {
-            subNewlines(1, \$_) for @protocol;
+            subnewlines(1, \$_) for @protocol;
         }
 
         if((!$out[0] || ($out[0] eq "")) && $protocol[0]) {
@@ -1335,7 +1248,7 @@ sub singletest_check {
                 if($replycheckpartattr{'crlf'} ||
                    ($feature{"hyper"} && ($keywords{"HTTP"}
                                    || $keywords{"HTTPS"}))) {
-                    subNewlines(0, \$_) for @replycheckpart;
+                    subnewlines(0, \$_) for @replycheckpart;
                 }
                 push(@reply, @replycheckpart);
             }
@@ -1360,7 +1273,7 @@ sub singletest_check {
         if($replyattr{'crlf'} ||
            ($feature{"hyper"} && ($keywords{"HTTP"}
                            || $keywords{"HTTPS"}))) {
-            subNewlines(0, \$_) for @reply;
+            subnewlines(0, \$_) for @reply;
         }
     }
 
@@ -1435,7 +1348,7 @@ sub singletest_check {
 
         if($hash{'crlf'} ||
            ($feature{"hyper"} && ($keywords{"HTTP"} || $keywords{"HTTPS"}))) {
-            subNewlines(0, \$_) for @proxyprot;
+            subnewlines(0, \$_) for @proxyprot;
         }
 
         $res = compare($testnum, $testname, "proxy", \@out, \@proxyprot);
@@ -1480,7 +1393,7 @@ sub singletest_check {
             if($hash{'crlf'} ||
                ($feature{"hyper"} && ($keywords{"HTTP"}
                                || $keywords{"HTTPS"}))) {
-                subNewlines(0, \$_) for @outfile;
+                subnewlines(0, \$_) for @outfile;
             }
 
             for my $strip (@stripfilepar) {
