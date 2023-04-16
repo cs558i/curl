@@ -66,8 +66,6 @@ BEGIN {
     );
 }
 
-use MIME::Base64;
-
 use serverhelp qw(
     serverfactors
     servername_id
@@ -106,6 +104,7 @@ use pathhelp qw(
 
 use processhelp;
 use globalconfig;
+use testutil;
 
 
 my %serverpidfile; # all server pid file names, identified by server id
@@ -146,20 +145,6 @@ our $stunnel; # path to stunnel command
 
 sub logmsg {
     return main::logmsg(@_);
-}
-
-#######################################################################
-# Call main's runclient
-# TODO: move this into a helper package
-sub runclient {
-    return main::runclient(@_);
-}
-
-#######################################################################
-# Call main's runclientoutput
-# TODO: move this into a helper package
-sub runclientoutput {
-    return main::runclientoutput(@_);
 }
 
 #######################################################################

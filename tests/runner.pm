@@ -105,13 +105,6 @@ sub displaylogs{
 }
 
 #######################################################################
-# Call main's runclient
-# TODO: move this into a helper package
-sub runclient {
-    return main::runclient(@_);
-}
-
-#######################################################################
 # Check for a command in the PATH of the machine running curl.
 #
 sub checktestcmd {

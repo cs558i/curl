@@ -34,10 +34,19 @@ BEGIN {
     use base qw(Exporter);
 
     our @EXPORT = qw(
+        runclient
+        runclientoutput
         subbase64
         subnewlines
     );
 }
+
+use MIME::Base64;
+
+use globalconfig qw(
+    $torture
+    $verbose
+);
 
 sub subbase64 {
     my ($thing) = @_;
@@ -101,6 +110,34 @@ sub subnewlines {
         }
         $prevupdate = 0;
     }
+}
+
+#######################################################################
+# Run the application under test and return its return code
+#
+sub runclient {
+    my ($cmd)=@_;
+    my $ret = system($cmd);
+    print "CMD ($ret): $cmd\n" if($verbose && !$torture);
+    return $ret;
+
+# This is one way to test curl on a remote machine
+#    my $out = system("ssh $CLIENTIP cd \'$pwd\' \\; \'$cmd\'");
+#    sleep 2;    # time to allow the NFS server to be updated
+#    return $out;
+}
+
+#######################################################################
+# Run the application under test and return its stdout
+#
+sub runclientoutput {
+    my ($cmd)=@_;
+    return `$cmd 2>/dev/null`;
+
+# This is one way to test curl on a remote machine
+#    my @out = `ssh $CLIENTIP cd \'$pwd\' \\; \'$cmd\'`;
+#    sleep 2;    # time to allow the NFS server to be updated
+#    return @out;
 }
 
 1;
