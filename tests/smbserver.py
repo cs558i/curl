@@ -206,6 +206,9 @@ class TestSmbServer(imp_smbserver.SMBSERVER):
                 os.path.dirname(full_path), os.path.basename(full_path),
                 level=imp_smb.SMB_QUERY_FILE_ALL_INFO)
 
+            # Delete the file path; use the descriptor only
+            os.unlink(full_path)
+
             if error_code != STATUS_SUCCESS:
                 raise SmbException(error_code, "Failed to query path info")
 
